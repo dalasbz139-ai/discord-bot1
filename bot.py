@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 import json
 import random
 from typing import Literal
+import aiohttp
+import re
 
 # Load environment variables
 load_dotenv()
@@ -2741,6 +2743,193 @@ async def on_member_remove(member):
     # Optional: Track leaves
     pass
 
+@bot.event
+async def on_message(message):
+    # Ignore bot messages
+    if message.author.bot:
+        return
+
+    # Process Commands first to not break existing bot behavior
+    await bot.process_commands(message)
+
+    # --- Anti-Spam: Block External Discord Invites ---
+    invite_match = re.search(r'(?:https?://)?(?:www\.)?(?:discord\.gg/|discord(?:app)?\.com/invite/)([a-zA-Z0-9-]+)', message.content, re.IGNORECASE)
+    if invite_match:
+        # Ignore admins/mods if needed, but for now we apply to everyone or check permissions
+        if not message.author.guild_permissions.administrator:
+            invite_code = invite_match.group(1)
+        # Fetch all invites for this server
+        try:
+            guild_invites = await message.guild.invites()
+            guild_invite_codes = [inv.code for inv in guild_invites]
+            
+            if invite_code not in guild_invite_codes:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention} 🚫 **ممنوع الإشهار!** (Les pubs snt interdites ici)")
+                
+                try:
+                    await message.author.send(f"⚠️ **تحذير:** راك لحت ليان ديال سيرفر آخر فـ **{message.guild.name}**. هادشي ممنوع!")
+                except discord.Forbidden:
+                    pass # User has DMs closed
+                return # Stop processing further (don't check images if message is deleted)
+        except discord.Forbidden:
+            print("[WARNING] Bot lacks 'Manage Server' permission to read invites.")
+    # -------------------------------------------------
+
+    print(f"[DEBUG] Received message content: {repr(message.content)} | attachments: {len(message.attachments)}")
+
+    # Image Moderation (Sightengine)
+    # Skip moderation for administrators
+    if message.author.guild_permissions.administrator:
+        return
+
+    api_user = os.getenv('SIGHTENGINE_API_USER')
+    api_secret = os.getenv('SIGHTENGINE_API_SECRET')
+    
+    if api_user and api_secret:
+        urls_to_check = []
+        
+        # 1. Check Attachments
+        for attachment in message.attachments:
+            if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif']):
+                urls_to_check.append({
+                    "url": attachment.url,
+                    "is_attachment": True,
+                    "attachment": attachment
+                })
+        
+        # Wait for Discord to parse URLs and create embeds if there are links
+        if re.search(r'https?://', message.content) and not message.attachments:
+            await asyncio.sleep(2)
+            try:
+                message = await message.channel.fetch_message(message.id)
+            except discord.NotFound:
+                pass # Message was already deleted
+                
+        # 2. Check all Discord Embeds (handles Tenor, Giphy, Klipy, direct links, etc.)
+        for embed in message.embeds:
+            actual_media_url = None
+            if embed.video and embed.video.url:
+                actual_media_url = embed.video.url
+            elif embed.image and embed.image.url:
+                actual_media_url = embed.image.url
+            elif embed.thumbnail and embed.thumbnail.url:
+                actual_media_url = embed.thumbnail.url
+                
+            # If it's a Tenor link without .gif, Sightengine needs the .gif extension to know it's a file
+            if actual_media_url and 'tenor.com/view/' in actual_media_url.lower() and not actual_media_url.lower().endswith('.gif'):
+                actual_media_url = actual_media_url + '.gif'
+                
+            if actual_media_url:
+                urls_to_check.append({
+                    "url": actual_media_url,
+                    "is_attachment": False
+                })
+                
+        for item in urls_to_check:
+            url = item['url']
+            print(f"[MODERATION] Checking media: {url}")
+            try:
+                # Use Video API for GIFs/MP4s to check all frames, Image API for others
+                is_video = any(ext in url.lower() for ext in ['.gif', '.mp4', '.webm', 'tenor.com', 'giphy.com', 'klipy.com'])
+                endpoint = 'https://api.sightengine.com/1.0/video/check-sync.json' if is_video else 'https://api.sightengine.com/1.0/check.json'
+                
+                async with aiohttp.ClientSession() as session:
+                    if item['is_attachment']:
+                        image_bytes = await item['attachment'].read()
+                        filename = item['attachment'].filename
+                    else:
+                        async with session.get(url) as media_resp:
+                            if media_resp.status == 200:
+                                image_bytes = await media_resp.read()
+                                filename = url.split('/')[-1].split('?')[0] or ('video.mp4' if is_video else 'image.png')
+                            else:
+                                print(f"[MODERATION] Failed to download {url}: {media_resp.status}")
+                                continue
+                                
+                    form = aiohttp.FormData()
+                    form.add_field('models', 'nudity-2.0,gore')
+                    form.add_field('api_user', api_user)
+                    form.add_field('api_secret', api_secret)
+                    form.add_field('media', image_bytes, filename=filename)
+                    
+                    async with session.post(endpoint, data=form) as resp:
+                            print(f"[MODERATION] API Status: {resp.status}")
+                            if resp.status == 200:
+                                data = await resp.json()
+                                print(f"[MODERATION] API Response: {json.dumps(data, indent=2)}")
+                                
+                                # Checking for Nudity or Gore
+                                is_nsfw_or_gore = False
+                                
+                                if data.get('status') == 'failure':
+                                    print(f"[MODERATION] API Error: {data.get('error')}")
+                                    continue
+                                
+                                # Helper function to evaluate nudity/gore data
+                                def evaluate_frame(frame_data):
+                                    if 'nudity' in frame_data:
+                                        try:
+                                          # Re-tighten strictness to catch borderline images
+                                            nudity = frame_data['nudity']
+                                            if nudity.get('sexual_activity', 0) > 0.05 or \
+                                               nudity.get('sexual_display', 0) > 0.05 or \
+                                               nudity.get('erotica', 0) > 0.05:
+                                                return True
+                                            safe_score = nudity.get('none', 1.0)
+                                            if safe_score < 0.95:
+                                                return True
+                                        except:
+                                            pass
+                                    if 'gore' in frame_data:
+                                        if frame_data['gore'].get('prob', 0.0) > 0.5:
+                                            return True
+                                    return False
+                                
+                                # Evaluate frames
+                                if is_video and 'data' in data and 'frames' in data['data']:
+                                    for frame in data['data']['frames']:
+                                        if evaluate_frame(frame):
+                                            is_nsfw_or_gore = True
+                                            break
+                                else:
+                                    is_nsfw_or_gore = evaluate_frame(data)
+                                        
+                                print(f"[MODERATION] Result: NSFW/Gore={is_nsfw_or_gore}")
+                                
+                                if is_nsfw_or_gore:
+                                    await message.delete()
+                                    
+                                    # Handle Warnings System
+                                    user_id = str(message.author.id)
+                                    warnings_file = 'moderation_warnings.json'
+                                    
+                                    try:
+                                        with open(warnings_file, 'r') as f:
+                                            warnings = json.load(f)
+                                    except (FileNotFoundError, json.JSONDecodeError):
+                                        warnings = {}
+                                        
+                                    if user_id not in warnings:
+                                        warnings[user_id] = {"strikes": 0}
+                                        
+                                    warnings[user_id]["strikes"] += 1
+                                    
+                                    with open(warnings_file, 'w') as f:
+                                        json.dump(warnings, f, indent=4)
+                                        
+                                    strikes = warnings[user_id]["strikes"]
+                                    
+                                    # Send Warning message only (no ban)
+                                    try:
+                                        await message.author.send(f"⚠️ **WARNING!** You sent a message containing explicit or gore content in **{message.guild.name}**. Please do not send such content.")
+                                    except discord.Forbidden:
+                                        pass # User has DMs disabled
+                                    await message.channel.send(f"{message.author.mention} ⚠️ **WARNING!** You sent a message containing explicit or gore content. The message has been deleted. Please do not re-upload it.")
+                                    return # Stop checking other attachments in the same message if one is found
+                                    
+            except Exception as e:
+                print(f"Error checking image with Sightengine: {e}")
 
 # Run the bot
 if __name__ == "__main__":
