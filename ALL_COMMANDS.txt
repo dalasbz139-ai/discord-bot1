@@ -93,6 +93,14 @@ ____________________________________________________
    Description: Show Payment Methods.
    (عرض طرق الدفع)
 
+8. /worldmood
+   Description: Discover what is happening in the world today.
+   (تصفح أبرز أحداث العالم والمزاج الإخباري اليوم)
+
+9. /setup-worldmood
+   Description: Creates the World Mood channel under welcome.
+   (إعداد غرفة مزاج العالم تحت غرفه الترحيب)
+
 ____________________________________________________
 
 👮 ADMIN COMMANDS (Prefix: !)

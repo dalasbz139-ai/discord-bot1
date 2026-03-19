@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import os
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ import random
 from typing import Literal
 import aiohttp
 import re
-
+import io
 # Load environment variables
 load_dotenv()
 
@@ -72,6 +72,58 @@ def get_invites(user_id):
     data = invites_data[user_id]
     total = (data["regular"] + data["bonus"]) - (data["leaves"] + data["fake"])
     return total if total > 0 else 0
+
+
+
+# --- Rock Paper Scissors Game ---
+class RPSView(discord.ui.View):
+    def __init__(self, user: discord.Member):
+        super().__init__(timeout=60)
+        self.user = user
+
+    def determine_winner(self, player, bot):
+        if player == bot:
+            return "Tie!"
+        elif (player == "rock" and bot == "scissors") or \
+             (player == "paper" and bot == "rock") or \
+             (player == "scissors" and bot == "paper"):
+            return "You win!"
+        else:
+            return "I win!"
+
+    async def play(self, interaction: discord.Interaction, player_choice: str):
+        if interaction.user != self.user:
+            await interaction.response.send_message("This isn't your game!", ephemeral=True)
+            return
+
+        bot_choice = random.choice(["rock", "paper", "scissors"])
+        emojis = {"rock": "🪨", "paper": "📄", "scissors": "✂️"}
+        
+        result = self.determine_winner(player_choice, bot_choice)
+        
+        embed = discord.Embed(
+            title="Rock Paper Scissors",
+            description=f"You chose {emojis[player_choice]}\nI chose {emojis[bot_choice]}\n\n**{result}**",
+            color=0x3498DB if "win" in result.lower() else 0xE74C3C
+        )
+        
+        for item in self.children:
+            item.disabled = True
+            
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="rock", style=discord.ButtonStyle.secondary, emoji="🪨")
+    async def btn_rock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.play(interaction, "rock")
+
+    @discord.ui.button(label="paper", style=discord.ButtonStyle.blurple, emoji="📄")
+    async def btn_paper(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.play(interaction, "paper")
+
+    @discord.ui.button(label="scissors", style=discord.ButtonStyle.danger, emoji="✂️")
+    async def btn_scissors(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.play(interaction, "scissors")
+
 
 # --- Giveaway System ---
 class GiveawayJoinButton(discord.ui.View):
@@ -689,16 +741,15 @@ class ServiceSelect(discord.ui.Select):
             # Send intro Embed first
             await interaction.response.send_message(embed=embed, ephemeral=False)
             
-            # Specific Bundles Requested
+            # New Bundles Added
             bundles = [
-                {"name": "VCT 2026 SEASON", "vp": 5550, "price_dh": 277.5, "price_usd": 27.75, "image": "vct2026.png"},
-                {"name": "HATCHBUDZ: QUACKED SERIES", "vp": 1160, "price_dh": 58, "price_usd": 5.80, "image": "lunar26.png"},
-                {"name": "SILKLEAF BUNDLE", "vp": 5100, "price_dh": 255.0, "price_usd": 25.50, "image": "silkleaf.png"},
-                {"name": "SILKLEAF FAN", "vp": 2550, "price_dh": 127.5, "price_usd": 12.75, "image": "silk_fan.png"},
-                {"name": "SILKLEAF VANDAL", "vp": 1275, "price_dh": 63.75, "price_usd": 6.38, "image": "silk_vandal.png"},
-                {"name": "SILKLEAF MARSHAL", "vp": 1275, "price_dh": 63.75, "price_usd": 6.38, "image": "silk_marshal.png"},
-                {"name": "SILKLEAF STINGER", "vp": 1275, "price_dh": 63.75, "price_usd": 6.38, "image": "silk_stinger.png"},
-                {"name": "SILKLEAF BANDIT", "vp": 1275, "price_dh": 63.75, "price_usd": 6.38, "image": "silk_bandit.png"}
+                {"name": "BLACKTHORN BUNDLE", "vp": 8700, "price_dh": 435.0, "price_usd": 43.50, "image": "blackthorn_bundle.png"},
+                {"name": "BLACKTHORN BLADES", "vp": 4350, "price_dh": 217.5, "price_usd": 21.75, "image": "blackthorn_blades.png"},
+                {"name": "BLACKTHORN VANDAL", "vp": 2175, "price_dh": 108.75, "price_usd": 10.88, "image": "blackthorn_vandal.png"},
+                {"name": "BLACKTHORN MARSHAL", "vp": 2175, "price_dh": 108.75, "price_usd": 10.88, "image": "blackthorn_marshal.png"},
+                {"name": "BLACKTHORN CLASSIC", "vp": 2175, "price_dh": 108.75, "price_usd": 10.88, "image": "blackthorn_classic.png"},
+                {"name": "BLACKTHORN GUARDIAN", "vp": 2175, "price_dh": 108.75, "price_usd": 10.88, "image": "blackthorn_guardian.png"},
+                {"name": "VCT X NS", "vp": 2320, "price_dh": 116.0, "price_usd": 11.60, "image": "vct_ns.png"}
             ]
             
             bot_dir = os.path.dirname(os.path.abspath(__file__))
@@ -838,12 +889,17 @@ class TicketSystemView(discord.ui.View):
         if not category:
             category = await guild.create_category("Tickets")
             
-        # Check if user already has a ticket in this category (Active)
-        for channel in category.text_channels:
-            if interaction.user in channel.overwrites:
-                if channel.overwrites[interaction.user].view_channel:
-                     await interaction.followup.send(f"❌ You already have a ticket open: {channel.mention}", ephemeral=True)
-                     return
+        # Check if user already has a ticket in any relevant category (Active)
+        ticket_categories = ["Tickets", "Orders", "Gifting Orders", "Valorant Orders", "Nitro Orders", "Fortnite Orders", "Support Tickets"]
+        
+        for cat_name in ticket_categories:
+            cat = discord.utils.get(guild.categories, name=cat_name)
+            if cat:
+                for channel in cat.text_channels:
+                    if interaction.user in channel.overwrites:
+                        if channel.overwrites[interaction.user].view_channel:
+                             await interaction.followup.send(f"❌ You already have an open ticket/order: {channel.mention}\n(Ma te9derch thoul ktar mn ticket wa7da f nefss lw9t.)", ephemeral=True)
+                             return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -931,13 +987,13 @@ async def on_ready():
             
     bot_setup_done = True
     
-    # Sync commands manually to avoid 429 Rate Limits
-    # try:
-    #     synced = await bot.tree.sync()
-    #     print(f"Synced {len(synced)} command(s)")
-    # except Exception as e:
-    #     print(f"Error syncing commands: {e}")
-    print("ℹ️ Note: Auto-sync is disabled to prevent crashes. Use '!sync' if you added new commands.")
+    # Force Sync on Ready
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} slash command(s) globally.")
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
+    # print("ℹ️ Note: Auto-sync is disabled to prevent crashes. Use '!sync' if you added new commands.")
 
 @bot.command(name='prices', aliases=['p', 'price', 'prix', 'cost'])
 async def prices(ctx):
@@ -2397,6 +2453,247 @@ async def sync(ctx):
     else:
         await ctx.send("❌ You do not have permission to use this command.")
 
+# --- New Feature Slash Commands ---
+@bot.tree.command(name="rps", description="Play Rock Paper Scissors with the bot!")
+async def rps(interaction: discord.Interaction):
+    view = RPSView(interaction.user)
+    embed = discord.Embed(
+        title="Rock Paper Scissors",
+        description="Choose your move below!",
+        color=0x9B59B6
+    )
+    await interaction.response.send_message(embed=embed, view=view)
+
+
+
+@bot.tree.command(name="set-invite-leaderboard", description="Set up the invite leaderboard system!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_invite_leaderboard(interaction: discord.Interaction):
+    await interaction.response.send_message("🛠️ This feature is under construction.", ephemeral=True)
+
+@bot.tree.command(name="set-message-leaderboard", description="Set up the message leaderboard system!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_message_leaderboard(interaction: discord.Interaction):
+    await interaction.response.send_message("🛠️ This feature is under construction.", ephemeral=True)
+
+@bot.tree.command(name="set-antilink-system", description="Set the anti-link system the way you want it!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_antilink_system(interaction: discord.Interaction):
+    # Currently hardcoded in on_message, but this UI can expand it
+    await interaction.response.send_message("🛡️ Anti-link is currently active. UI Settings coming soon.", ephemeral=True)
+
+@bot.tree.command(name="set-auto-message", description="Set the auto-message system!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_auto_message(interaction: discord.Interaction):
+    await interaction.response.send_message("🛠️ This feature is under construction.", ephemeral=True)
+
+# --- World Mood Commands ---
+@bot.tree.command(name="setup-worldmood", description="Setup the World Mood channel under welcome!")
+@discord.app_commands.default_permissions(administrator=True)
+async def setup_worldmood(interaction: discord.Interaction):
+    guild = interaction.guild
+    welcome_channel = discord.utils.get(guild.text_channels, name="welcome")
+    
+    if not welcome_channel:
+        # Fallback if there is no channel named exactly 'welcome'
+        category = interaction.channel.category
+        position = 0
+    else:
+        category = welcome_channel.category
+        position = welcome_channel.position + 1
+
+    try:
+        new_channel = await guild.create_text_channel(
+            name="world-mood",
+            category=category,
+            position=position,
+            topic="يحلل تويتر ويقول كيفاش مزاج العالم اليوم (World Mood Analysis)"
+        )
+        embed = discord.Embed(
+            title="🌍 World Mood Channel Setup",
+            description=f"✅ Created channel {new_channel.mention} successfully!\nIt is placed right below the welcome channel.",
+            color=0x2ECC71
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I don't have permission to create channels in this server.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error creating channel: {e}", ephemeral=True)
+
+# Make sure loop tracking is active
+world_mood_loop_running = False
+
+@tasks.loop(hours=10)
+async def world_mood_auto_post():
+    # Only try to post if the welcome/world-mood channel exists
+    for guild in bot.guilds:
+        channel = discord.utils.get(guild.text_channels, name="world-mood")
+        if not channel:
+            continue
+            
+        news_items = [
+            {
+                "category": "🚀 Technology & AI",
+                "headline": "New AI Model Surpasses Human Performance in Complex Coding Tasks!",
+                "arabic": "نموذج ذكاء اصطناعي جديد يتخطى القدرات البشرية في البرمجة المعقدة!",
+                "details": "Major tech companies announced today that their latest AI can write full-stack applications in seconds.",
+                "color": 0x3498DB,
+                "icon": "https://cdn-icons-png.flaticon.com/512/2083/2083213.png"
+            },
+            {
+                "category": "🌍 Global Events",
+                "headline": "Historic Peace Treaty Signed Ending Decade-Long Conflict",
+                "arabic": "توقيع معاهدة سلام تاريخية تنهي صراعاً دام عقداً كاملاً",
+                "details": "Leaders from major nations gathered today in a historic summit, bringing hope to millions.",
+                "color": 0x2ECC71,
+                "icon": "https://cdn-icons-png.flaticon.com/512/814/814513.png"
+            },
+            {
+                "category": "🎮 Gaming News",
+                "headline": "GTA 6 Trailer Breaks the Internet Once Again!",
+                "arabic": "تريلر لعبة GTA 6 يكسر الإنترنت مجدداً بقوة!",
+                "details": "Rockstar dropped a surprise second trailer, confirming the exact release month and showcasing incredible graphics.",
+                "color": 0xE74C3C,
+                "icon": "https://cdn-icons-png.flaticon.com/512/808/808476.png"
+            },
+            {
+                "category": "💰 Economy & Crypto",
+                "headline": "Bitcoin Reaches Unprecedented New All-Time High!",
+                "arabic": "البيتكوين يحطم الأرقام القياسية ويصل لأعلى مستوى له في التاريخ!",
+                "details": "Cryptocurrency markets surged today following major institutional adoptions globally.",
+                "color": 0xF1C40F,
+                "icon": "https://cdn-icons-png.flaticon.com/512/2590/2590518.png"
+            },
+            {
+                "category": "⚽ Sports",
+                "headline": "A Shocking Transfer Shakes the Football World!",
+                "arabic": "صفقة انتقال صادمة تهز عالم كرة القدم تماماً!",
+                "details": "One of the world's top players has just signed a record-breaking deal with an unexpected club.",
+                "color": 0x27AE60,
+                "icon": "https://cdn-icons-png.flaticon.com/512/1165/1165187.png"
+            },
+            {
+                "category": "🌌 Space Exploration",
+                "headline": "James Webb Telescope Discovers Potentially Habitable Exoplanet",
+                "arabic": "تلسكوب جيمس ويب يكتشف كوكباً خارجياً قد يكون صالحاً للحياة",
+                "details": "NASA confirmed the discovery of an Earth-sized planet with signs of water vapor in its atmosphere.",
+                "color": 0x9B59B6,
+                "icon": "https://cdn-icons-png.flaticon.com/512/3254/3254068.png"
+            }
+        ]
+        
+        todays_news = random.sample(news_items, k=random.randint(2, 3))
+        embed = discord.Embed(
+            title="📰 World News Auto-Broadcast - نشرة أخبار العالم",
+            description="Here is what is happening around the globe right now:\nإليك أبرز ما يحدث في العالم هذه اللحظة:",
+            color=todays_news[0]["color"]
+        )
+        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/2965/2965879.png")
+        for i, news in enumerate(todays_news, 1):
+            content = f"**{news['headline']}**\n{news['arabic']}\n*_{news['details']}_*"
+            embed.add_field(name=f"{news['category']}", value=content, inline=False)
+            
+        embed.set_footer(text="Powered by Karys AI • Simulated Live News Sync")
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            pass
+
+@bot.tree.command(name="worldmood", description="Discover what's happening in the world today! Starts auto-broadcast.")
+async def worldmood(interaction: discord.Interaction):
+    global world_mood_loop_running
+    
+    if not world_mood_loop_running:
+        world_mood_auto_post.start()
+        world_mood_loop_running = True
+        init_message = "✅ Auto-News Broadcast started! It will now auto-post to `#world-mood` every 10 hours.\nتم تفعيل النشر التلقائي كل 10 ساعات في غرفة `#world-mood`."
+    else:
+        init_message = "♻️ The auto-broadcast is already running in the background."
+
+    # Send an initial burst to the exact channel they triggered it in
+    # Simulated top world news to avoid forcing the user to get an API key
+    news_items = [
+        {
+            "category": "🚀 Technology & AI",
+            "headline": "New AI Model Surpasses Human Performance in Complex Coding Tasks!",
+            "arabic": "نموذج ذكاء اصطناعي جديد يتخطى القدرات البشرية في البرمجة المعقدة!",
+            "details": "Major tech companies announced today that their latest AI can write full-stack applications in seconds.",
+            "color": 0x3498DB,
+            "icon": "https://cdn-icons-png.flaticon.com/512/2083/2083213.png"
+        },
+        {
+            "category": "🌍 Global Events",
+            "headline": "Historic Peace Treaty Signed Ending Decade-Long Conflict",
+            "arabic": "توقيع معاهدة سلام تاريخية تنهي صراعاً دام عقداً كاملاً",
+            "details": "Leaders from major nations gathered today in a historic summit, bringing hope to millions.",
+            "color": 0x2ECC71,
+            "icon": "https://cdn-icons-png.flaticon.com/512/814/814513.png"
+        },
+        {
+            "category": "🎮 Gaming News",
+            "headline": "GTA 6 Trailer Breaks the Internet Once Again!",
+            "arabic": "تريلر لعبة GTA 6 يكسر الإنترنت مجدداً بقوة!",
+            "details": "Rockstar dropped a surprise second trailer, confirming the exact release month and showcasing incredible graphics.",
+            "color": 0xE74C3C,
+            "icon": "https://cdn-icons-png.flaticon.com/512/808/808476.png"
+        },
+        {
+            "category": "💰 Economy & Crypto",
+            "headline": "Bitcoin Reaches Unprecedented New All-Time High!",
+            "arabic": "البيتكوين يحطم الأرقام القياسية ويصل لأعلى مستوى له في التاريخ!",
+            "details": "Cryptocurrency markets surged today following major institutional adoptions globally.",
+            "color": 0xF1C40F,
+            "icon": "https://cdn-icons-png.flaticon.com/512/2590/2590518.png"
+        },
+        {
+            "category": "⚽ Sports",
+            "headline": "A Shocking Transfer Shakes the Football World!",
+            "arabic": "صفقة انتقال صادمة تهز عالم كرة القدم تماماً!",
+            "details": "One of the world's top players has just signed a record-breaking deal with an unexpected club.",
+            "color": 0x27AE60,
+            "icon": "https://cdn-icons-png.flaticon.com/512/1165/1165187.png"
+        },
+        {
+            "category": "🌌 Space Exploration",
+            "headline": "James Webb Telescope Discovers Potentially Habitable Exoplanet",
+            "arabic": "تلسكوب جيمس ويب يكتشف كوكباً خارجياً قد يكون صالحاً للحياة",
+            "details": "NASA confirmed the discovery of an Earth-sized planet with signs of water vapor in its atmosphere.",
+            "color": 0x9B59B6,
+            "icon": "https://cdn-icons-png.flaticon.com/512/3254/3254068.png"
+        }
+    ]
+    # Pick 2-3 random news stories for the day
+    todays_news = random.sample(news_items, k=random.randint(2, 3))
+    
+    embed = discord.Embed(
+        title="📰 World News & Mood - أبرز أحداث العالم",
+        description="Here is what is happening around the globe today:\nإليك أبرز ما يحدث في العالم اليوم:",
+        color=todays_news[0]["color"] # Use color from top story
+    )
+    
+    embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/2965/2965879.png")
+    
+    for i, news in enumerate(todays_news, 1):
+        content = f"**{news['headline']}**\n{news['arabic']}\n*_{news['details']}_*"
+        embed.add_field(name=f"{news['category']}", value=content, inline=False)
+        
+    embed.set_footer(text="Powered by Karys AI • Simulated Live News Sync")
+    
+    # Let user know the loop status
+    await interaction.response.send_message(content=init_message, embed=embed)
+
+@bot.tree.command(name="set-auto-reaction", description="Set the auto-reaction system!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_auto_reaction(interaction: discord.Interaction):
+    await interaction.response.send_message("🛠️ This feature is under construction.", ephemeral=True)
+
+@bot.tree.command(name="set-booster-channel", description="Set the booster channel system!")
+@discord.app_commands.default_permissions(administrator=True)
+async def set_booster_channel(interaction: discord.Interaction):
+    await interaction.response.send_message("🛠️ This feature is under construction.", ephemeral=True)
+
+
+
 @bot.command(name="giveaway")
 async def giveaway_prefix(ctx):
     await ctx.send("⚠️ **Please use the new slash commands:**\n`/gcreate` - Start a new giveaway\n`/gend` - End a giveaway\n`/glist` - List active giveaways")
@@ -2748,6 +3045,8 @@ async def on_message(message):
     # Ignore bot messages
     if message.author.bot:
         return
+
+
 
     # Process Commands first to not break existing bot behavior
     await bot.process_commands(message)

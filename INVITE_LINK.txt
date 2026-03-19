@@ -2,7 +2,7 @@
   رابط إضافة Karys Shop Bot إلى Discord
 ═══════════════════════════════════════════════════════════
 
-https://discord.com/api/oauth2/authorize?client_id=1466946766334070947&permissions=83968&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=1471671330498937009&permissions=83968&scope=bot%20applications.commands
 
 ═══════════════════════════════════════════════════════════
 
