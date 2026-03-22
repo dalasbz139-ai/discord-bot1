@@ -297,35 +297,36 @@ class TicketCloseConfirmationView(discord.ui.View):
             except:
                 pass
             
-            # Get Logs Category with Rolling Logic (Ticket Logs -> Ticket Logs1 -> Ticket Logs2 ...)
-            log_category_names = ["Ticket Logs", "Ticket Logs1", "Ticket Logs2", "Ticket Logs3", "Ticket Logs4", "Ticket Logs5", "Ticket Logs6", "Ticket Logs7", "Ticket Logs8", "Ticket Logs9", "Ticket Logs10", "Ticket Logs11", "Ticket Logs12", "Ticket Logs13", "Ticket Logs14", "Ticket Logs15"]
+            # Get Logs Category — fill existing first, create new only if all full
+            # Max 50 tickets per category. Categories: LOGS 1, LOGS 2, LOGS 3...
+            MAX_PER_CATEGORY = 50
             target_category = None
 
-            for cat_name in log_category_names:
-                category = discord.utils.get(guild.categories, name=cat_name)
-                
-                if category:
-                    # Check if full (50 channels max)
-                    if len(category.channels) < 50:
-                        target_category = category
-                        break
-                else:
-                    # Category doesn't exist, create it and use it
-                    overwrites = {
-                        guild.default_role: discord.PermissionOverwrite(view_channel=False)
-                    }
-                    target_category = await guild.create_category(cat_name, overwrites=overwrites)
-                    break
+            # Step 1: Find existing LOGS categories and pick first one with space
+            existing_logs = []
+            for cat in guild.categories:
+                if "LOGS" in cat.name.upper():
+                    # Try to extract number using regex
+                    match = re.search(r'LOGS\s*(\d+)', cat.name, re.IGNORECASE)
+                    if match:
+                        num = int(match.group(1))
+                        existing_logs.append((num, cat))
             
-            # Fallback if all are full (use the last one or default)
+            existing_logs.sort(key=lambda x: x[0])
+
+            for num, cat in existing_logs:
+                if len(cat.channels) < MAX_PER_CATEGORY:
+                    target_category = cat
+                    break
+
+            # Step 2: If all full or none exist, create a new LOGS category
             if not target_category:
-                target_category = discord.utils.get(guild.categories, name="Ticket Logs15")
-                if not target_category:
-                     # Should have been created in loop, but just in case
-                     overwrites = {
-                        guild.default_role: discord.PermissionOverwrite(view_channel=False)
-                    }
-                     target_category = await guild.create_category("Ticket Logs15", overwrites=overwrites)
+                next_num = (existing_logs[-1][0] + 1) if existing_logs else 1
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(view_channel=False)
+                }
+                target_category = await guild.create_category(f"🛡️ LOGS {next_num}", overwrites=overwrites)
+
 
             # Step 1: Move category (Critical)
             await channel.edit(category=target_category)
@@ -444,11 +445,7 @@ async def process_package_order(interaction: discord.Interaction, item_str, paym
         if "Gifting" in item_str:
             category_name = "Gifting Orders"
         elif "VP" in item_str or "Valorant" in item_str:
-            category_name = "Valorant Orders"
-        elif "Nitro" in item_str:
-            category_name = "Nitro Orders"
-        elif "V-Bucks" in item_str:
-            category_name = "Fortnite Orders"
+            category_name = "Valorant Points"
             
         category = discord.utils.get(guild.categories, name=category_name)
         if not category:
@@ -568,11 +565,7 @@ class PackageOrderModal(discord.ui.Modal):
             if "Gifting" in self.item_str:
                 category_name = "Gifting Orders"
             elif "VP" in self.item_str or "Valorant" in self.item_str:
-                category_name = "Valorant Orders"
-            elif "Nitro" in self.item_str:
-                category_name = "Nitro Orders"
-            elif "V-Bucks" in self.item_str:
-                category_name = "Fortnite Orders"
+                category_name = "Valorant Points"
                 
             category = discord.utils.get(guild.categories, name=category_name)
             if not category:
@@ -611,13 +604,12 @@ class PaymentSelect(discord.ui.Select):
         self.package_info = package_info
         options = [
             discord.SelectOption(label="CIH Bank", emoji="🏦", description="Bank Transfer"),
-            discord.SelectOption(label="Attijariwafa Bank", emoji="🏦", description="Bank Transfer"),
             discord.SelectOption(label="BMCE Bank", emoji="🏦", description="Bank Transfer"),
             discord.SelectOption(label="Cash Plus", emoji="💸", description="Cash Transfer"),
             discord.SelectOption(label="Binance (USDT)", emoji="🪙", description="Crypto Payment"),
-            discord.SelectOption(label="PayPal", emoji="💲", description="International Payment")
         ]
         super().__init__(placeholder="Select Payment Method...", min_values=1, max_values=1, options=options)
+
 
     async def callback(self, interaction: discord.Interaction):
         payment_method = self.values[0]
@@ -658,8 +650,6 @@ class ServiceSelect(discord.ui.Select):
         options = [
             discord.SelectOption(label="Valorant Points", emoji="<:vp:1466944483504427008>", description="VP Top-up for all regions", value="vp"),
             discord.SelectOption(label="Valorant Gifting", emoji="🎁", description="Skins & Bundles Gifting Service", value="gifting"),
-            discord.SelectOption(label="Discord Nitro", emoji="🚀", description="Nitro Boost, Classic, Basic", value="nitro"),
-            discord.SelectOption(label="Fortnite V-Bucks", emoji="🎮", description="V-Bucks Top-up", value="vbucks"),
             discord.SelectOption(label="Other / Support", emoji="❓", description="General questions or other services", value="other")
         ]
         super().__init__(placeholder="Select the service you want...", min_values=1, max_values=1, options=options, custom_id="service_select_menu")
@@ -779,35 +769,6 @@ class ServiceSelect(discord.ui.Select):
                     
             await interaction.channel.send(f"{interaction.user.mention} Please select your Discord Gifting Package from the options above!")
             
-        elif service == "nitro":
-            # Show Nitro Options
-            embed = discord.Embed(title="🚀 **Discord Nitro Packages**", description="Select your plan below:", color=0x5865F2)
-            options = [
-                discord.SelectOption(label="Nitro Boost 1 Month", description="Gift Link - $8 (90 DH)", emoji="🎁"),
-                discord.SelectOption(label="Nitro Boost 1 Year", description="Gift Link - $90 (900 DH)", emoji="🎁"),
-                discord.SelectOption(label="Nitro Basic 1 Year", description="Gift Link - $30 (300 DH)", emoji="🎁"),
-                discord.SelectOption(label="Nitro Boost 1 Year (No Login)", description="Safe - $60 (600 DH)", emoji="🛡️"),
-                discord.SelectOption(label="Nitro Boost 1 Year (Login)", description="Login Req - $50 (500 DH)", emoji="⚡")
-            ]
-            view = discord.ui.View()
-            view.add_item(PackageSelect("Nitro", options))
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-        elif service == "vbucks":
-            embed = discord.Embed(title="🎮 **Fortnite V-Bucks Packages**", description="Select your package below:", color=0x00A2FF)
-            
-            options = []
-            sorted_vbucks = sorted(VBUCKS_PRICES.items(), key=lambda x: int(x[0]))
-            
-            for vb, price in sorted_vbucks:
-                label = f"{int(vb):,} V-Bucks"
-                desc = f"{price} DH"
-                options.append(discord.SelectOption(label=label, description=desc, emoji="🎮"))
-
-            view = discord.ui.View()
-            view.add_item(PackageSelect("V-Bucks", options))
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
         else:
             # "Other" - No Modal, just prompt user to speak in chat
             try:
@@ -890,7 +851,7 @@ class TicketSystemView(discord.ui.View):
             category = await guild.create_category("Tickets")
             
         # Check if user already has a ticket in any relevant category (Active)
-        ticket_categories = ["Tickets", "Orders", "Gifting Orders", "Valorant Orders", "Nitro Orders", "Fortnite Orders", "Support Tickets"]
+        ticket_categories = ["Tickets", "Orders", "Gifting Orders", "Valorant Points", "Support Tickets"]
         
         for cat_name in ticket_categories:
             cat = discord.utils.get(guild.categories, name=cat_name)
@@ -2454,6 +2415,248 @@ async def sync(ctx):
         await ctx.send("❌ You do not have permission to use this command.")
 
 # --- New Feature Slash Commands ---
+
+# !setup-reviews: Create/update the reviews channel with correct role permissions
+@bot.command(name="setup-reviews", aliases=["setupreviews"])
+async def setup_reviews_cmd(ctx):
+    """Admin only: Create a #reviews channel where Customers & VIP roles can write."""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only.")
+        return
+
+    guild = ctx.guild
+
+    # The roles that are allowed to WRITE reviews
+    allowed_role_names = ["Customers", "$50 Dollar", "$100 Dollar", "$500 Dollar", "50$", "100$", "500$", "50 Dollar", "100 Dollar", "500 Dollar"]
+
+    # Find matching roles (case-insensitive)
+    allowed_roles = []
+    for role in guild.roles:
+        for name in allowed_role_names:
+            if role.name.lower() == name.lower():
+                allowed_roles.append(role)
+                break
+
+    if not allowed_roles:
+        await ctx.send("⚠️ Ma-l9it-ch les roles! Ta9dar t-smih chi wa7da mn: `Customers`, `$50 Dollar`, `$100 Dollar`, `$500 Dollar`")
+        return
+
+    # Find or create the reviews channel
+    channel = discord.utils.get(guild.text_channels, name="⭐・reviews")
+    if not channel:
+        channel = discord.utils.get(guild.text_channels, name="reviews")
+
+    # Build permission overwrites
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=False,   # Can READ only
+            read_message_history=True
+        ),
+        guild.me: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_messages=True
+        )
+    }
+
+    # Allow allowed roles to write
+    for role in allowed_roles:
+        overwrites[role] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            embed_links=True,
+            attach_files=True
+        )
+
+    if channel:
+        # Update existing channel permissions
+        await channel.edit(overwrites=overwrites, reason="!setup-reviews: Updated permissions")
+        await ctx.send(f"✅ Channel {channel.mention} updated!\n**Can write:** " + ", ".join(f"`{r.name}`" for r in allowed_roles))
+    else:
+        # Find the INFO or main category
+        category = discord.utils.get(guild.categories, name="〢─ INFO ─〢")
+        if not category:
+            category = discord.utils.get(guild.categories, name="INFO")
+
+        channel = await guild.create_text_channel(
+            "⭐・reviews",
+            category=category,
+            overwrites=overwrites,
+            topic="🌟 Share your experience with Karys Shop! | Customers & VIP only"
+        )
+
+        # Post a welcome message
+        embed = discord.Embed(
+            title="⭐ Reviews — Karys Shop",
+            description=(
+                "**Share your experience with us!**\n\n"
+                "✅ Only customers with an order can leave a review.\n"
+                "🚫 Fake reviews or spam will result in a timeout.\n\n"
+                "*Thank you for trusting Karys Shop! 🙏*"
+            ),
+            color=0xF1C40F
+        )
+        embed.set_footer(text="Karys Shop | Reviews")
+        await channel.send(embed=embed)
+
+        await ctx.send(f"✅ Channel {channel.mention} created!\n**Can write:** " + ", ".join(f"`{r.name}`" for r in allowed_roles))
+
+# !move-logs: Move all channels FROM Tickets/Orders categories INTO the LOGS X categories below
+@bot.command(name="move-logs", aliases=["movelogs"])
+async def move_logs_cmd(ctx):
+    """Admin only: Move closed tickets from top categories INTO LOGS categories."""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only.")
+        return
+
+    await ctx.send("⏳ Starting migration of tickets INTO the LOGS categories...")
+    guild = ctx.guild
+    moved = 0
+    errors = 0
+
+    # 1. Find all TARGET LOGS categories (destinations)
+    logs_cats = []
+    for cat in guild.categories:
+        if "LOGS" in cat.name.upper():
+            match = re.search(r'LOGS\s*(\d+)', cat.name, re.IGNORECASE)
+            if match:
+                num = int(match.group(1))
+                logs_cats.append((num, cat))
+    logs_cats.sort(key=lambda x: x[0])
+
+    if not logs_cats:
+        await ctx.send("❌ Ma-kayna 7ta category dyal LOGS (bhal 🛡️ LOGS 1).")
+        return
+
+    # 2. Find Source tickets (Tickets that are NOT in a LOGS category and are named like a ticket)
+    tickets_to_move = []
+    
+    # Prefix for identifying tickets:
+    valid_prefixes = ["ticket-", "order-", "closedorder-", "closed-"]
+    
+    for channel in guild.text_channels:
+        # If the channel matches ticket naming conventions
+        if any(channel.name.startswith(p) for p in valid_prefixes):
+            # Check if it is NOT currently in a LOGS category
+            in_logs = False
+            if channel.category and "LOGS" in channel.category.name.upper():
+                in_logs = True
+                
+            if not in_logs:
+                tickets_to_move.append(channel)
+
+    if not tickets_to_move:
+        await ctx.send("✅ Ma-l9it 7ta ticket l-fouq li khas-ha temchi l-LOGS! Kolchi m9ad.")
+        return
+
+    dest_idx = 0
+
+    for channel in tickets_to_move:
+        # Find the next available LOGS category (max 50 per category)
+        while dest_idx < len(logs_cats) and len(logs_cats[dest_idx][1].channels) >= 50:
+            dest_idx += 1
+            
+        # If we ran out of LOGS categories, create a new one!
+        if dest_idx >= len(logs_cats):
+            # Calculate next number
+            next_num = (logs_cats[-1][0] + 1) if logs_cats else 1
+            
+            # Create new category
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False)
+            }
+            new_cat_name = f"🛡️ LOGS {next_num}"
+            try:
+                new_cat = await guild.create_category(new_cat_name, overwrites=overwrites)
+                logs_cats.append((next_num, new_cat))
+                dest_cat = new_cat
+            except Exception as e:
+                await ctx.send(f"❌ Error creating new category: {e}")
+                break
+        else:
+            dest_cat = logs_cats[dest_idx][1]
+            
+        try:
+            await channel.edit(category=dest_cat)
+            moved += 1
+            await asyncio.sleep(0.8)  # Rate limit
+        except Exception as e:
+            print(f"[move-logs] Error moving {channel.name}: {e}")
+            errors += 1
+
+    await ctx.send(f"✅ Migration done! **{moved}** tickets moved to LOGS, **{errors}** errors.")
+
+
+# Prefix command version: !scan-fakes
+@bot.command(name="scan-fakes")
+async def scan_fakes_prefix(ctx):
+    """List accounts with age < 60 days and no avatar. Admin only."""
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Admin only.")
+        return
+    
+    fakes = []
+    now = datetime.now(timezone.utc)
+    
+    for member in ctx.guild.members:
+        if member.bot: continue
+        age = (now - member.created_at).days
+        if age < 60 and member.avatar is None:
+            fakes.append(member)
+
+    if not fakes:
+        await ctx.send("✅ Ma-kaynin-ch les comptes suspects (Account < 60 jours + Bla tswira).")
+        return
+
+    # Build report embed
+    embed = discord.Embed(
+        title=f"🔍 Suspicious Accounts — {len(fakes)} Found",
+        color=0xFF4444,
+        timestamp=datetime.now()
+    )
+    
+    lines = ""
+    for m in fakes[:25]:
+        age_days = (now - m.created_at).days
+        lines += f"• {m.mention} `{m}` | 📅 {age_days} jours\n"
+    
+    if len(fakes) > 25:
+        lines += f"\n*...o {len(fakes)-25} kbar...*"
+    
+    embed.description = lines
+    embed.set_footer(text="Karys Shop Auto-Mod | Accounts < 60 days & No Avatar")
+
+    class FakeActionView(discord.ui.View):
+        def __init__(self, fakes_list):
+            super().__init__(timeout=120)
+            self.fakes = fakes_list
+
+        @discord.ui.button(label=f"⏱️ Timeout All (7 Days)", style=discord.ButtonStyle.danger, emoji="🔨")
+        async def timeout_all(self, btn_interaction: discord.Interaction, button: discord.ui.Button):
+            if not btn_interaction.user.guild_permissions.administrator:
+                await btn_interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+            await btn_interaction.response.defer(ephemeral=True)
+            count = 0
+            for m in self.fakes:
+                try:
+                    await m.timeout(timedelta(days=7), reason="!scan-fakes: Account < 60 days & No Avatar")
+                    count += 1
+                    await asyncio.sleep(0.5)  # Avoid rate limits
+                except:
+                    pass
+            await btn_interaction.followup.send(f"✅ Timeout directory on **{count}** accounts.", ephemeral=True)
+            self.stop()
+
+        @discord.ui.button(label="🚫 Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel(self, btn_interaction: discord.Interaction, button: discord.ui.Button):
+            await btn_interaction.response.send_message("❌ Cancelled.", ephemeral=True)
+            self.stop()
+
+    await ctx.send(embed=embed, view=FakeActionView(fakes))
+
 @bot.tree.command(name="rps", description="Play Rock Paper Scissors with the bot!")
 async def rps(interaction: discord.Interaction):
     view = RPSView(interaction.user)
@@ -3037,8 +3240,174 @@ async def on_member_join(member):
 
 @bot.event
 async def on_member_remove(member):
-    # Optional: Track leaves
-    pass
+    # Track leaves in invites.json
+    try:
+        # Find who invited them or just track the leave
+        # For now, just log the leave
+        embed = discord.Embed(
+            title="📥 Member Left",
+            description=f"**{member}** has left the server.",
+            color=0xE74C3C,
+            timestamp=datetime.now()
+        )
+        embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+        embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
+        
+        # Determine log channel
+        log_channel = discord.utils.get(member.guild.text_channels, name="👥・member-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_member_remove log: {e}")
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot: return
+    try:
+        embed = discord.Embed(
+            title="🗑️ Message Deleted",
+            description=f"**Author:** {message.author.mention}\n**Channel:** {message.channel.mention}",
+            color=0xE74C3C,
+            timestamp=datetime.now()
+        )
+        content = message.content[:1000] or "*No text content (likely an image or embed)*"
+        embed.add_field(name="Content", value=content, inline=False)
+        
+        log_channel = discord.utils.get(message.guild.text_channels, name="💬・message-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_message_delete log: {e}")
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or before.content == after.content: return
+    try:
+        embed = discord.Embed(
+            title="📝 Message Edited",
+            description=f"**Author:** {before.author.mention}\n**Channel:** {before.channel.mention}\n[Jump to message]({after.jump_url})",
+            color=0xF1C40F,
+            timestamp=datetime.now()
+        )
+        embed.add_field(name="Before", value=before.content[:1000] or "*Empty*", inline=False)
+        embed.add_field(name="After", value=after.content[:1000] or "*Empty*", inline=False)
+        
+        log_channel = discord.utils.get(before.guild.text_channels, name="💬・message-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_message_edit log: {e}")
+
+@bot.event
+async def on_member_ban(guild, user):
+    try:
+        embed = discord.Embed(
+            title="🔨 Member Banned",
+            description=f"**User:** {user.mention} ({user})",
+            color=0xFF0000,
+            timestamp=datetime.now()
+        )
+        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
+        embed.add_field(name="User ID", value=f"`{user.id}`", inline=True)
+        
+        log_channel = discord.utils.get(guild.text_channels, name="⚖️・moderation-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_member_ban log: {e}")
+
+@bot.event
+async def on_guild_channel_create(channel):
+    try:
+        embed = discord.Embed(
+            title="🆕 Channel Created",
+            description=f"**Name:** {channel.name}\n**Type:** {channel.type}\n**Category:** {channel.category.name if channel.category else 'None'}",
+            color=0x2ECC71,
+            timestamp=datetime.now()
+        )
+        log_channel = discord.utils.get(channel.guild.text_channels, name="💻・server-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_guild_channel_create log: {e}")
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    try:
+        embed = discord.Embed(
+            title="❌ Channel Deleted",
+            description=f"**Name:** {channel.name}\n**Type:** {channel.type}",
+            color=0xE74C3C,
+            timestamp=datetime.now()
+        )
+        log_channel = discord.utils.get(channel.guild.text_channels, name="💻・server-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in on_guild_channel_delete log: {e}")
+
+@bot.event
+async def on_member_join(member):
+    # Log join to member-logs
+    try:
+        embed = discord.Embed(
+            title="📥 Member Joined",
+            description=f"**{member}** joined the server.\nAccount Created: <t:{int(member.created_at.timestamp())}:R>",
+            color=0x2ECC71,
+            timestamp=datetime.now()
+        )
+        embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+        embed.add_field(name="User ID", value=f"`{member.id}`", inline=True)
+        log_channel = discord.utils.get(member.guild.text_channels, name="👥・member-logs")
+        if log_channel:
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in logging join: {e}")
+
+    # Invite tracking logic
+    inviter = None
+    try:
+        current_invites = await member.guild.invites()
+        cached_invites = invite_cache.get(member.guild.id, [])
+        for invite in current_invites:
+            for cached in cached_invites:
+                if invite.code == cached.code and invite.uses > cached.uses:
+                    inviter = invite.inviter
+                    break
+            if inviter: break
+        invite_cache[member.guild.id] = current_invites
+        if inviter:
+            inviter_id = str(inviter.id)
+            if inviter_id not in invites_data:
+                invites_data[inviter_id] = {"regular": 0, "fake": 0, "bonus": 0, "leaves": 0}
+            if (datetime.now(timezone.utc) - member.created_at).days < 3:
+                invites_data[inviter_id]["fake"] += 1
+            else:
+                invites_data[inviter_id]["regular"] += 1
+            save_data('invites.json', invites_data)
+    except Exception as e:
+        print(f"Error tracking invite: {e}")
+
+    # Anti-Fake Account: timeout new/no-avatar accounts
+    try:
+        account_age = (datetime.now(timezone.utc) - member.created_at).days
+        is_suspicious = account_age < 3 or (account_age < 60 and member.avatar is None)
+        if is_suspicious:
+            duration = timedelta(days=7)
+            reason = "New Account (< 3 days)" if account_age < 3 else "Suspicious (< 60 days & No Avatar)"
+            await member.timeout(duration, reason=reason)
+            log_channel = discord.utils.get(member.guild.text_channels, name="⚖️・moderation-logs")
+            if log_channel:
+                embed = discord.Embed(title="🛡️ Auto Moderation (SUSPICIOUS ACCOUNT)", color=0xFF0000, timestamp=datetime.now())
+                embed.add_field(name="User", value=f"{member.mention} ({member})", inline=True)
+                embed.add_field(name="Account Age", value=f"{account_age} days", inline=True)
+                embed.add_field(name="Has Avatar", value=f"{member.avatar is not None}", inline=True)
+                embed.add_field(name="Action", value="7 Days Timeout", inline=False)
+                await log_channel.send(embed=embed)
+            print(f"[AUTO-MOD] Timed out suspicious account: {member} (Age: {account_age} days)")
+    except Exception as e:
+        print(f"Error in Anti-Fake Account timeout: {e}")
+
 
 @bot.event
 async def on_message(message):
@@ -3046,42 +3415,52 @@ async def on_message(message):
     if message.author.bot:
         return
 
-
-
-    # Process Commands first to not break existing bot behavior
+    # FIRST: always process commands (so !scan-fakes and all commands work)
     await bot.process_commands(message)
 
-    # --- Anti-Spam: Block External Discord Invites ---
-    invite_match = re.search(r'(?:https?://)?(?:www\.)?(?:discord\.gg/|discord(?:app)?\.com/invite/)([a-zA-Z0-9-]+)', message.content, re.IGNORECASE)
-    if invite_match:
-        # Ignore admins/mods if needed, but for now we apply to everyone or check permissions
-        if not message.author.guild_permissions.administrator:
-            invite_code = invite_match.group(1)
-        # Fetch all invites for this server
-        try:
-            guild_invites = await message.guild.invites()
-            guild_invite_codes = [inv.code for inv in guild_invites]
-            
-            if invite_code not in guild_invite_codes:
-                await message.delete()
-                await message.channel.send(f"{message.author.mention} 🚫 **ممنوع الإشهار!** (Les pubs snt interdites ici)")
-                
-                try:
-                    await message.author.send(f"⚠️ **تحذير:** راك لحت ليان ديال سيرفر آخر فـ **{message.guild.name}**. هادشي ممنوع!")
-                except discord.Forbidden:
-                    pass # User has DMs closed
-                return # Stop processing further (don't check images if message is deleted)
-        except discord.Forbidden:
-            print("[WARNING] Bot lacks 'Manage Server' permission to read invites.")
-    # -------------------------------------------------
-
-    print(f"[DEBUG] Received message content: {repr(message.content)} | attachments: {len(message.attachments)}")
-
-    # Image Moderation (Sightengine)
-    # Skip moderation for administrators
+    # Skip all further checks for admins
     if message.author.guild_permissions.administrator:
         return
 
+    # Anti-Scam: Keyword Filter (Timeout)
+    SCAM_KEYWORDS = ["scam", "scammer", "nassab", "nasaba", "chfara", "chfar", "cheffar", "نصاب", "نصابة", "شفار", "شفارة"]
+    if any(keyword in message.content.lower() for keyword in SCAM_KEYWORDS):
+        try:
+            await message.delete()
+            await message.author.timeout(timedelta(days=7), reason="Scam keyword filter")
+            log_channel = discord.utils.get(message.guild.text_channels, name="⚖️・moderation-logs")
+            if log_channel:
+                embed = discord.Embed(title="🛡️ Auto Moderation (SCAM FILTER)", color=0xFF0000, timestamp=datetime.now())
+                embed.add_field(name="User", value=f"{message.author.mention} ({message.author})", inline=True)
+                embed.add_field(name="Action", value="7 Days Timeout & Message Deleted", inline=False)
+                embed.add_field(name="Content", value=message.content[:500], inline=False)
+                await log_channel.send(embed=embed)
+            await message.channel.send(f"{message.author.mention} 🚫 **تم كتم حسابك تلقائياً!**")
+            return
+        except Exception as e:
+            print(f"Error in Anti-Scam filter: {e}")
+
+    # Anti-Spam: Block External Discord Invites
+    invite_match = re.search(r'(?:https?://)?(?:www\.)?(?:discord\.gg/|discord(?:app)?\.com/invite/)([a-zA-Z0-9-]+)', message.content, re.IGNORECASE)
+    if invite_match:
+        invite_code = invite_match.group(1)
+        try:
+            guild_invites = await message.guild.invites()
+            guild_invite_codes = [inv.code for inv in guild_invites]
+            if invite_code not in guild_invite_codes:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention} 🚫 **ممنوع الإشهار!**")
+                try:
+                    await message.author.send(f"⚠️ راك لحت ليان ديال سيرفر آخر فـ **{message.guild.name}**. هادشي ممنوع!")
+                except discord.Forbidden:
+                    pass
+                return
+        except discord.Forbidden:
+            print("[WARNING] Bot lacks 'Manage Server' permission to read invites.")
+
+    print(f"[DEBUG] msg: {repr(message.content)} | attachments: {len(message.attachments)}")
+
+    # Image Moderation (Sightengine)
     api_user = os.getenv('SIGHTENGINE_API_USER')
     api_secret = os.getenv('SIGHTENGINE_API_SECRET')
     
