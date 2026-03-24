@@ -73,7 +73,7 @@ async def on_ready():
             description="**Get your favorite Valorant skins & bundles directly in-game!**\nWe offer a safe and instant gifting service.",
             color=0xFD4556
         )
-        embed.add_field(name="🆔 Riot IDs to Add (Select your region)", value="**🇪🇺 Europe:** `KARYS#UE06`\n**🇹🇷 Turkey:** `DALAS L7#BOSS`\n\n*Send a friend request to the correct account to start.*", inline=False)
+        embed.add_field(name="🆔 Riot IDs to Add (Select your region)", value="**🇪🇺 Europe:** `DALAS L7#9999`\n**🇹🇷 Turkey:** `DALAS L7#BOSS`\n\n*Send a friend request to the correct account to start.*", inline=False)
         embed.add_field(name="🇺🇸 How it works", value="**1️⃣ Add Friend:** Send a request to the ID above.\n**2️⃣ Wait 7 Days:** Wait the mandatory 7-day period (Riot Rule).\n**3️⃣ Payment:** Pay via CIH / Attijari / Crypto.\n**4️⃣ Receive:** Get your skin/bundle instantly!", inline=False)
         embed.add_field(name="🇲🇦 طريقة العمل", value="**1️⃣ طلب صداقة:** أرسل طلب للآيدي الموضح أعلاه.\n**2️⃣ الانتظار:** انتظر مدة 7 أيام (قانون اللعبة).\n**3️⃣ الدفع:** ادفع عبر CIH / التجاري / Crypto.\n**4️⃣ الاستلام:** استلم هديتك فوراً!", inline=False)
         embed.set_footer(text="Karys Shop | Valorant Gifting Service")

@@ -700,7 +700,7 @@ class ServiceSelect(discord.ui.Select):
             embed.add_field(
                 name="🆔 Riot IDs to Add (اختر منطقتك)",
                 value=(
-                    "**🇪🇺 Europe:** `KARYS#UE06`\n"
+                    "**🇪🇺 Europe:** `DALAS L7#9999`\n"
                     "**🇹🇷 Turkey:** `DALAS L7#BOSS`\n\n"
                     "*Send a friend request to the correct account to start.*"
                 ),
@@ -1414,7 +1414,7 @@ async def gift(ctx):
     embed.add_field(
         name="🆔 Riot IDs to Add (Select your region)",
         value=(
-            "**🇪🇺 Europe:** `KARYS#UE06`\n"
+            "**🇪🇺 Europe:** `DALAS L7#9999`\n"
             "**🇹🇷 Turkey:** `DALAS L7#BOSS`\n\n"
             "*Send a friend request to the correct account to start.*"
         ),
@@ -1481,7 +1481,7 @@ async def gift_slash(interaction: discord.Interaction):
     embed.add_field(
         name="🆔 Riot IDs to Add (Select your region)",
         value=(
-            "**🇪🇺 Europe:** `KARYS#UE06`\n"
+            "**🇪🇺 Europe:** `DALAS L7#9999`\n"
             "**🇹🇷 Turkey:** `DALAS L7#BOSS`\n\n"
             "*Send a friend request to the correct account to start.*"
         ),
