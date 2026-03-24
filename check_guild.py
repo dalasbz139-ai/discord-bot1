@@ -29,12 +29,12 @@ async def on_ready():
         # First channels without category
         for channel in guild.channels:
             if channel.category is None:
-                print(f"Channel (no category): {channel.name} ({type(channel).__name__})")
+                print(f"Channel (no category): {channel.name} (ID: {channel.id}) ({type(channel).__name__})")
         
         for category in guild.categories:
-            print(f"Category: {category.name}")
+            print(f"Category: {category.name} (ID: {category.id})")
             for channel in category.channels:
-                print(f"  - {channel.name} ({type(channel).__name__})")
+                print(f"  - {channel.name} (ID: {channel.id}) ({type(channel).__name__})")
     await client.close()
 
 if __name__ == "__main__":

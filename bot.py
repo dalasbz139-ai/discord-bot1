@@ -183,7 +183,7 @@ class TicketButton(discord.ui.View):
     def __init__(self, guild_id):
         super().__init__()
         # Link to the specific channel
-        url = f"https://discord.com/channels/{guild_id}/1466942654800597085"
+        url = f"https://discord.com/channels/{guild_id}/1485141935210365171"
         self.add_item(discord.ui.Button(label="Open a Ticket", style=discord.ButtonStyle.link, url=url, emoji="🎟️"))
 
 class TicketAdminView(discord.ui.View):
@@ -1238,7 +1238,7 @@ async def spotify(ctx):
     # Ready to buy
     embed.add_field(
         name="💳 Ready to Upgrade?",
-        value="Click the **Open a Ticket** button below or go to <#1466942654800597085>! 📩",
+        value="Click the **Open a Ticket** button below or go to <#1485141935210365171>! 📩",
         inline=False
     )
     
@@ -1297,7 +1297,7 @@ async def nitro(ctx):
     # Check current day/time availability or random footer
     embed.add_field(
         name="💳 Ready to buy?",
-        value="Click the **Open a Ticket** button below or go to <#1466942654800597085>! 📩",
+        value="Click the **Open a Ticket** button below or go to <#1485141935210365171>! 📩",
         inline=False
     )
     
@@ -1376,7 +1376,7 @@ async def boost(ctx):
     # Ready to buy
     embed.add_field(
         name="💳 Ready to Boost?",
-        value="Click the **Open a Ticket** button below or go to <#1466942654800597085>! 📩",
+        value="Click the **Open a Ticket** button below or go to <#1485141935210365171>! 📩",
         inline=False
     )
     
@@ -1614,7 +1614,7 @@ async def nitro_slash(interaction: discord.Interaction):
     # Check current day/time availability or random footer
     embed.add_field(
         name="💳 Ready to buy?",
-        value="Click the **Open a Ticket** button below or go to <#1466942654800597085>! 📩",
+        value="Click the **Open a Ticket** button below or go to <#1485141935210365171>! 📩",
         inline=False
     )
     
@@ -1693,7 +1693,7 @@ async def boost_slash(interaction: discord.Interaction):
     # Ready to buy
     embed.add_field(
         name="💳 Ready to Boost?",
-        value="Click the **Open a Ticket** button below or go to <#1466942654800597085>! 📩",
+        value="Click the **Open a Ticket** button below or go to <#1485141935210365171>! 📩",
         inline=False
     )
     
@@ -1763,7 +1763,7 @@ def create_price_post():
     # Add order instructions
     embed.add_field(
         name="📩 Order:",
-        value="Send payment proof in the payment <#1466942654800597085> .",
+        value="Send payment proof in the payment <#1485141935210365171> .",
         inline=False
     )
     

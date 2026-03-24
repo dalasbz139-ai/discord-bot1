@@ -22,7 +22,7 @@ class TicketButton(discord.ui.View):
         super().__init__()
         # Link to the specific channel if needed, or just a dummy
         # In bot.py, this links to the instructions/ticket channel
-        self.add_item(discord.ui.Button(label="Open a Ticket", style=discord.ButtonStyle.link, url=f"https://discord.com/channels/{guild_id}/1466942654800597085", emoji="🎟️"))
+        self.add_item(discord.ui.Button(label="Open a Ticket", style=discord.ButtonStyle.link, url=f"https://discord.com/channels/{guild_id}/1485141935210365171", emoji="🎟️"))
 
 @client.event
 async def on_ready():
