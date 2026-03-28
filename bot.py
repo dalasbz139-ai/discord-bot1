@@ -3609,6 +3609,47 @@ async def on_message(message):
             except Exception as e:
                 print(f"Error checking image with Sightengine: {e}")
 
+@bot.command(name='dm_all', aliases=['send_all', 'massdm'])
+@commands.has_permissions(administrator=True)
+async def dm_all(ctx, *, message_content: str = None):
+    """إرسال رسالة لجميع الأعضاء في السيرفر (مع الصور/الفيديوهات)"""
+    if not message_content and not ctx.message.attachments:
+        await ctx.send("❌ يرجى كتابة رسالة أو إرفاق صورة/فيديو لإرساله.", delete_after=5)
+        return
+        
+    status_msg = await ctx.send("⏳ يتم تجهيز الأعضاء لإرسال الرسائل... هذه العملية قد تستغرق وقتاً طويلاً.")
+    
+    sent_count = 0
+    failed_count = 0
+    
+    # تحضير المرفقات لتكون جاهزة للإرسال المتعدد
+    files_to_send = []
+    for attachment in ctx.message.attachments:
+        file_bytes = await attachment.read()
+        files_to_send.append({'bytes': file_bytes, 'filename': attachment.filename})
+    
+    # إرسال لكل عضو في السيرفر
+    for member in ctx.guild.members:
+        if member.bot:
+            continue
+            
+        try:
+            # تجهيز الملفات لكل عضو (discord.File يجب إنشاؤه من جديد لكل إرسال)
+            member_files = []
+            for file_data in files_to_send:
+                member_files.append(discord.File(io.BytesIO(file_data['bytes']), filename=file_data['filename']))
+            
+            await member.send(content=message_content, files=member_files)
+            sent_count += 1
+            await asyncio.sleep(1.5) # تجنب حظر الديسكورد (Rate limit)
+        except discord.Forbidden:
+            failed_count += 1 # العضو مقفل الخاصية عنده
+        except Exception as e:
+            print(f"Failed to DM {member.name}: {e}")
+            failed_count += 1
+            
+    await status_msg.edit(content=f"✅ **اكتمل الإرسال!**\n🟢 نجح الإرسال إلى: `{sent_count}` عضو\n🔴 فشل الإرسال إلى: `{failed_count}` عضو (قد يكون الخاص مغلقاً)")
+
 # Run the bot
 if __name__ == "__main__":
     token = os.getenv('DISCORD_BOT_TOKEN')
