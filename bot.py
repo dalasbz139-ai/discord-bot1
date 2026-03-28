@@ -1015,7 +1015,7 @@ async def prices(ctx):
         embed.set_footer(text="Karys Shop | Trusted Valorant Points Provider")
 
         
-        view = TicketButton(ctx.guild.id)
+        view = TicketButton(ctx.guild.id) if ctx.guild else None
         # Use karys.png for prices command as well (consistent branding)
         # Use karys.png from current directory
         bot_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1120,7 +1120,7 @@ async def order(ctx, points: str = None):
         inline=False
     )
     
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     await ctx.send(embed=embed, view=view)
 
 @bot.command(name="help_shop")
@@ -1252,16 +1252,16 @@ async def spotify(ctx):
         try:
             file = discord.File(image_path, filename="spotify.png")
             embed.set_image(url=f"attachment://spotify.png")
-            view = TicketButton(ctx.guild.id)
+            view = TicketButton(ctx.guild.id) if ctx.guild else None
             await ctx.send(embed=embed, file=file, view=view)
         except Exception as e:
             print(f"[ERROR] Failed to send Spotify image: {e}")
-            view = TicketButton(ctx.guild.id)
+            view = TicketButton(ctx.guild.id) if ctx.guild else None
             await ctx.send(embed=embed, view=view)
     else:
         # Fallback
         embed.set_image(url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/1200px-Spotify_logo_without_text.svg.png")
-        view = TicketButton(ctx.guild.id)
+        view = TicketButton(ctx.guild.id) if ctx.guild else None
         await ctx.send(embed=embed, view=view)
 
 @bot.command(name='nitro', aliases=['discord_nitro', 'نترو'])
@@ -1307,7 +1307,7 @@ async def nitro(ctx):
     bot_dir = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(bot_dir, "nitro.png")
     
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     
     if os.path.exists(image_path):
         try:
@@ -1386,7 +1386,7 @@ async def boost(ctx):
     bot_dir = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(bot_dir, "boost.png")
     
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     
     if os.path.exists(image_path):
         try:
@@ -1459,7 +1459,7 @@ async def gift(ctx):
     bot_dir = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(bot_dir, "karys.png")
          
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
 
     if os.path.exists(image_path):
         file = discord.File(image_path, filename="karys.png")
@@ -1809,7 +1809,7 @@ async def post_command(ctx):
     bot_dir = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(bot_dir, "karys.png")
     
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     if os.path.exists(image_path):
         print(f"[INFO] Found image at: {image_path}")
         try:
@@ -1890,7 +1890,7 @@ async def payment(ctx):
     bot_dir = os.path.dirname(os.path.abspath(__file__))
     karys_image_path = os.path.join(bot_dir, "karys.png")
 
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     
     if os.path.exists(karys_image_path):
         try:
@@ -2062,7 +2062,7 @@ async def vbucks(ctx):
     if not os.path.exists(image_path):
          image_path = os.path.join(bot_dir, "vbucks.png")
 
-    view = TicketButton(ctx.guild.id)
+    view = TicketButton(ctx.guild.id) if ctx.guild else None
     
     if os.path.exists(image_path):
         try:
@@ -3418,8 +3418,8 @@ async def on_message(message):
     # FIRST: always process commands (so !scan-fakes and all commands work)
     await bot.process_commands(message)
 
-    # Skip all further checks for admins
-    if message.author.guild_permissions.administrator:
+    # Skip all further checks for admins or DMs
+    if not message.guild or (hasattr(message.author, 'guild_permissions') and message.author.guild_permissions.administrator):
         return
 
     # Anti-Scam: Keyword Filter (Timeout)
@@ -3612,7 +3612,10 @@ async def on_message(message):
 @bot.command(name='dm_all', aliases=['send_all', 'massdm'])
 @commands.has_permissions(administrator=True)
 async def dm_all(ctx, *, message_content: str = None):
-    """إرسال رسالة لجميع الأعضاء في السيرفر (مع الصور/الفيديوهات)"""
+    if not ctx.guild:
+        await ctx.send("❌ هذا الأمر يعمل فقط داخل السيرفر.")
+        return
+        
     if not message_content and not ctx.message.attachments:
         await ctx.send("❌ يرجى كتابة رسالة أو إرفاق صورة/فيديو لإرساله.", delete_after=5)
         return
